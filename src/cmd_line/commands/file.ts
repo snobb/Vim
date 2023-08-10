@@ -40,6 +40,14 @@ export type IFileCommandArguments =
       cmd?: FileCmd;
       file?: string;
       createFileIfNotExists?: boolean;
+    }
+  | {
+      name: 'find' | 'tabfind';
+      bang: boolean;
+      opt: FileOpt;
+      cmd?: FileCmd;
+      file?: string;
+      createFileIfNotExists?: boolean;
     };
 
 // TODO: This is a hack to get this to work in the short term with new arg parsing logic.
@@ -71,6 +79,8 @@ function getLegacyArgs(args: IFileCommandArguments): LegacyArgs {
     return { file: args.file, position: FilePosition.NewWindowHorizontalSplit };
   } else if (args.name === 'vsplit') {
     return { file: args.file, position: FilePosition.NewWindowVerticalSplit };
+  } else if (args.name === 'find') {
+    return { file: args.file, bang: args.bang, createFileIfNotExists: false };
   } else {
     throw new Error(`Unexpected FileCommand.arguments.name: ${args.name}`);
   }
@@ -107,13 +117,21 @@ export class FileCommand extends ExCommand {
       optWhitespace.then(fileCmdParser).fallback(undefined),
       optWhitespace.then(fileNameParser).fallback(undefined)
     ).map(([opt, cmd, file]) => new FileCommand({ name: 'vsplit', opt, cmd, file })),
+    find: seq(
+      bangParser,
+      optWhitespace.then(fileOptParser).fallback([]),
+      optWhitespace.then(fileCmdParser).fallback(undefined),
+      optWhitespace.then(fileNameParser).fallback(undefined)
+    ).map(([bang, opt, cmd, file]) => new FileCommand({ name: 'find', bang, opt, cmd, file })),
   };
 
   private readonly arguments: IFileCommandArguments;
+  private readonly cmdName: string;
 
   constructor(args: IFileCommandArguments) {
     super();
     this.arguments = args;
+    this.cmdName = args.name;
   }
 
   async execute(vimState: VimState): Promise<void> {
@@ -121,6 +139,11 @@ export class FileCommand extends ExCommand {
 
     if (args.bang) {
       await vscode.commands.executeCommand('workbench.action.files.revert');
+      return;
+    }
+
+    if (this.cmdName === 'find') {
+      await vscode.commands.executeCommand('workbench.action.quickOpen', args.file);
       return;
     }
 
